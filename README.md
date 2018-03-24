@@ -1,7 +1,7 @@
 ## insight_fellowship
 
 This repository has been created to highlight a few side projects (for learning only) 
-I have worked on to help develop some data science-like skills. A description of the 
+I have worked on to help develop some data science skills. A description of the 
 contained directories follows below:
 
 * **text_predict_app**: shiny app created to demonstate a text prediction model I built, 
