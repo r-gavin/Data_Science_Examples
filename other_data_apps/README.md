@@ -32,5 +32,5 @@ Files & Links:
 - server.R
 - ui.R
 - [Rpresentation slide deck](http://rpubs.com/r-gavin/288282)
-- [shiny applications](https://r-gavin.shinyapps.io/pay_loans_vs_investing/)
+- [shiny application](https://r-gavin.shinyapps.io/pay_loans_vs_investing/)
 
