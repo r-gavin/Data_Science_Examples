@@ -1,0 +1,550 @@
+---
+title: "Effects on Community Public Health and Economy Due to Severe Weather Events"
+output:
+      html_document:
+            fig_width: 9.5
+            fig_height: 9
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE,
+                      message = FALSE,
+                      warning = FALSE)
+```
+
+In this report we aim to investigate the relationship between severe weather events and the resulting effects to public health and local economies for a sample of communities or municipalities.
+
+### Synopsis
+
+Storms and other severe weather events can cause both public health and economic problems for communities and municipalities. Many severe events can result in fatalities, injuries, and property damage, and preventing such outcomes to the extent possible is a key concern.
+
+The U.S. National Oceanic and Atmospheric Administration (NOAA) tracks the characteristics of major storms and weather events in the United States. Characteristics recorded include when and where they occur, as well as estimates of any fatalities, injuries, and property damage.
+
+We will be using this NOAA database of sever weather event characteristics to conduct our study as mentioned above. It is important to note that although the database includes events recorded from 1950 to Nov. 2011, early records were for tornado events only, with other weather events gradually added to the list of events to record. The more recent years should be considered as more complete.
+
+Supplimental information:  
+* [Storm Data](https://d396qusza40orc.cloudfront.net/repdata%2Fdata%2FStormData.csv.bz2)  
+* National Weather Service [Storm Data Documentation](https://d396qusza40orc.cloudfront.net/repdata%2Fpeer2_doc%2Fpd01016005curr.pdf)  
+* National Climate Data Center Storm Events [FAQ](https://d396qusza40orc.cloudfront.net/repdata%2Fpeer2_doc%2FNCDC%20Storm%20Events-FAQ%20Page.pdf)
+
+### Loading and Processing the Raw Data
+
+Ensure certain packages are loaded:
+```{r packages}
+require(dplyr)
+require(ggplot2)
+require(grDevices)
+require(reshape2)
+require(grid)
+require(gridExtra)
+```
+
+Reading in data. The `read.csv()` function can appropriately handle (.bz2) compressed files. Empty cells are read in as `NA`'s.
+```{r loading, cache=TRUE}
+sdata <- read.csv("repdata-data-StormData.csv.bz2",na.strings = "")
+```
+
+Transform the data into a more managable form using the `dplyr` package, and rid our data set of erroneous (for this study) columns:
+```{r transform1, cache=TRUE}
+sdata <- tbl_df(sdata)
+sdata <- mutate(sdata,
+                BGN_DATE = NULL,BGN_TIME = NULL,TIME_ZONE = NULL,
+                BGN_RANGE = NULL,BGN_RANGE = NULL,BGN_AZI = NULL,
+                BGN_LOCATI = NULL,END_DATE = NULL,END_TIME = NULL,
+                COUNTY_END = NULL,COUNTYENDN = NULL,END_RANGE = NULL,
+                END_AZI = NULL,END_LOCATI = NULL,LATITUDE = NULL,
+                LONGITUDE = NULL,LATITUDE_E = NULL,LONGITUDE_ = NULL,
+                WFO = NULL, STATEOFFIC = NULL, ZONENAMES = NULL,
+                STATE__ = NULL, COUNTY = NULL, COUNTYNAME = NULL,
+                LENGTH = NULL, WIDTH = NULL, F = NULL, MAG = NULL,
+                REMARKS = NULL
+                )
+```
+
+Define some useful vectors that will be used later:  
+--  a distinction will be made between the 50 US States and other US properties (Commonwealths, Territories, and Millitary States)  
+--  the NOAA storm database places all severe weather events into one of 48 different types  
+```{r useful_vectors}
+states50 <- c("AL","AK","AZ","AR","CA","CO","CT","DE",
+              "FL","GA","HI","ID","IL","IN","IA","KS",
+              "KY","LA","ME","MD","MA","MI","MN","MS",
+              "MO","MT","NE","NV","NH","NJ","NM","NY",
+              "NC","ND","OH","OK","OR","PA","RI","SC",
+              "SD","TN","TX","UT","VT","VA","WA","WV",
+              "WI","WY")
+evtype_v <- toupper(
+      c("Astronomical Low Tide","Avalanche","Blizzard","Coastal Flood",
+        "Cold/Wind Chill","Debris Flow","Dense Fog","Dense Smoke",
+        "Drought","Dust Devil","Dust Storm","Excessive Heat",
+        "Extreme Cold/Wind Chill","Flash Flood","Flood","Frost/Freeze",
+        "Funnel Cloud","Freezing Fog","Hail","Heat","Heavy Rain",
+        "Heavy Snow","High Surf","High Wind","Hurricane",
+        "Ice Storm","Lake-Effect Snow","Lakeshore Flood","Lightning",
+        "Marine Hail","Marine High Wind","Marine Strong Wind",
+        "Marine Thunderstorm Wind","Rip Current","Seiche","Sleet",
+        "Storm Surge/Tide","Strong Wind","Thunderstorm Wind","Tornado",
+        "Tropical Depression","Tropical Storm","Tsunami","Volcanic Ash",
+        "Waterspout","Wildfire","Winter Storm","Winter Weather")
+      )
+```
+
+Get the property and crop damage costs in a useful form - change from alphanumeric code to numeric value only:
+```{r transform2, cache=TRUE}
+### Transforming PROPDMGEXP to numerical value and creating variable PROPTOTAL
+### which represents total Monetary Property Damage
+sdata$PROPDMGEXP <- as.character(sdata$PROPDMGEXP)
+sdata$PROPDMGEXP <- ifelse(sdata$PROPDMGEXP %in% c("B","b"),
+                           1000000000,
+                           ifelse(sdata$PROPDMGEXP %in% c("M","m"),
+                                  1000000,
+                                  ifelse(sdata$PROPDMGEXP %in% c("K","k"),
+                                         1000,
+                                         sdata$PROPDMGEXP)
+                                  )
+                           )
+sdata$PROPDMGEXP <- ifelse(sdata$PROPDMGEXP %in% c("H","h"),
+                            100,
+                            ifelse(sdata$PROPDMGEXP %in% as.character(0:8),
+                                   10,
+                                   ifelse(sdata$PROPDMGEXP %in% c("+"),
+                                          1,
+                                          ifelse(sdata$PROPDMGEXP %in% c("-","?"),
+                                                 0,
+                                                 sdata$PROPDMGEXP)
+                                          )
+                                   )
+                           )
+sdata$PROPDMGEXP[sdata$PROPDMG == 0 | is.na(sdata$PROPDMGEXP)] = 0
+sdata <- mutate(sdata, PROPTOTAL = PROPDMG * as.numeric(PROPDMGEXP))
+
+### Transforming PROPDMGEXP to numerical value and creating variable PROPTOTAL
+### which represents total Monetary Property Damage
+sdata$CROPDMGEXP <- as.character(sdata$CROPDMGEXP)
+sdata$CROPDMGEXP <- ifelse(sdata$CROPDMGEXP %in% c("B","b"),
+                           1000000000,
+                           ifelse(sdata$CROPDMGEXP %in% c("M","m"),
+                                  1000000,
+                                  ifelse(sdata$CROPDMGEXP %in% c("K","k"),
+                                         1000,
+                                         sdata$CROPDMGEXP
+                                         )
+                                  )
+                           )
+sdata$CROPDMGEXP <- ifelse(sdata$CROPDMGEXP %in% c("H","h"),
+                            100,
+                            ifelse(sdata$CROPDMGEXP %in% as.character(0:8),
+                                   10,
+                                   ifelse(sdata$CROPDMGEXP %in% c("+"),
+                                          1,
+                                          ifelse(sdata$CROPDMGEXP %in% c("-","?"),
+                                                 0,
+                                                 sdata$CROPDMGEXP)
+                                          )
+                                   )
+                           )
+sdata$CROPDMGEXP[sdata$CROPDMG == 0 | is.na(sdata$CROPDMGEXP)] = 0
+sdata <- mutate(sdata, CROPTOTAL = CROPDMG * as.numeric(CROPDMGEXP))
+```
+
+Now organize the weather event types to the match the types listed by NOAA.  
+
+By examining the data, we can find approximately 1000 different weather events:
+```{r}
+length(unique(sdata$EVTYPE))
+```
+Something that might help reduce this number is to make all event types be writen in upper case, but we're still left with nearly 900 events.
+```{r}
+length(unique(toupper(sdata$EVTYPE)))
+```
+This is much larger than the 48 types that are listed by NOAA. The next section of code shows an effort to combine types that are similar.
+
+```{r transform3, cache=TRUE}
+sdata$EVTYPE <- as.factor(toupper(sdata$EVTYPE))
+
+sdata$EVTYPE[grep("^(?=.*AVALAN)",
+                  sdata$EVTYPE,perl = TRUE)] = "AVALANCHE"
+sdata$EVTYPE = as.factor(as.character(sdata$EVTYPE))
+
+sdata$EVTYPE[grep("^(((?=.*WATER)(?=.*SPOU))|(?=.*WAYTERSPOUT))(?!^TORNA)(?!.*DUST)",
+                  sdata$EVTYPE, perl = TRUE)] = "WATERSPOUT"
+sdata$EVTYPE = as.factor(as.character(sdata$EVTYPE))
+
+sdata$EVTYPE[grep("^(?=.*TORN)",
+                  sdata$EVTYPE,perl = TRUE)] = "TORNADO"
+sdata$EVTYPE = as.factor(as.character(sdata$EVTYPE))
+
+sdata$EVTYPE[grep("^(?=.*HURR)|(?=.*TYPH)",
+                  sdata$EVTYPE,perl = TRUE)] = "HURRICANE"
+sdata$EVTYPE = as.factor(as.character(sdata$EVTYPE))
+
+sdata$EVTYPE[grep("^(?=.*BLIZZ)(?!.*ICE)",
+                  sdata$EVTYPE,perl = TRUE)] = "BLIZZARD"
+sdata$EVTYPE = as.factor(as.character(sdata$EVTYPE))
+
+sdata$EVTYPE[grep("^(?=.*HAIL)(?!^T)(?!.*FUNNEL)(?!.*MARINE)",
+                  sdata$EVTYPE,perl = TRUE)] = "HAIL"
+sdata$EVTYPE = as.factor(as.character(sdata$EVTYPE))
+
+sdata$EVTYPE[grep("^(?=.*FLASH)",
+                  sdata$EVTYPE,perl = TRUE)] = "FLASH FLOOD"
+sdata$EVTYPE = as.factor(as.character(sdata$EVTYPE))
+
+sdata$EVTYPE[grep("^((?=.*THUN)|(?=.*TSTM))(?!.*MARINE)(?!.*NON)(?!.*SNOW)",
+                  sdata$EVTYPE,perl = TRUE)] = "THUNDERSTORM WIND"
+sdata$EVTYPE = as.factor(as.character(sdata$EVTYPE))
+
+sdata$EVTYPE[grep("^((?=.*LIGHTN)|(?=.*LIGHTI))",
+                  sdata$EVTYPE,perl = TRUE)] = "LIGHTNING"
+sdata$EVTYPE = as.factor(as.character(sdata$EVTYPE))
+
+sdata$EVTYPE[grep(
+      "^(?=.*HIGH)(?=.*WIND)(?!.*MARINE)(?!.*WINTER)(?!.*SNOW)(?!.*CHILL)(?!.*COASTAL)(?!.*DUST)(?!.*SEA)(?!.*TIDE)(?!.*FLOOD)(?!.*RAIN)(?!.*COLD)",
+      sdata$EVTYPE,perl = TRUE)] = "HIGH WIND"
+sdata$EVTYPE = as.factor(as.character(sdata$EVTYPE))
+
+sdata$EVTYPE[grep("^(?=.*VO)",
+                  sdata$EVTYPE,perl = TRUE)] = "VOLCANIC ASH"
+sdata$EVTYPE = as.factor(as.character(sdata$EVTYPE))
+
+sdata$EVTYPE[grep("^((?=.*WINTER)|(?=.*WINTRY)|(?=.*THUNDERSN))(?!.*STORM)(?!.*RECORD)", 
+                  sdata$EVTYPE, perl = TRUE)] = "WINTER WEATHER"
+sdata$EVTYPE = as.factor(as.character(sdata$EVTYPE))
+
+sdata$EVTYPE[grep("^(?=.*WINTER)(?!.*WEATHER)",
+                  sdata$EVTYPE,perl = TRUE)] = "WINTER STORM"
+sdata$EVTYPE = as.factor(as.character(sdata$EVTYPE))
+
+sdata$EVTYPE[grep("^(?=.*FIRE)",
+                  sdata$EVTYPE,perl = TRUE)] = "WILDFIRE"
+sdata$EVTYPE = as.factor(as.character(sdata$EVTYPE))
+
+sdata$EVTYPE[grep("^(?=.*FLOOD)((?=.*BEACH)|(?=.*COASTAL)|(?=.*CSTL)|(?=.*TIDAL))",
+                  sdata$EVTYPE,perl = TRUE)] = "COASTAL FLOOD"
+sdata$EVTYPE = as.factor(as.character(sdata$EVTYPE))
+sdata$EVTYPE[grep("^(?=.*FLOOD)(?=.*LAKE)",
+                  sdata$EVTYPE,perl = TRUE)] = "LAKESHORE FLOOD"
+sdata$EVTYPE = as.factor(as.character(sdata$EVTYPE))
+sdata$EVTYPE[grep("^(?=.*FLOOD)(?!.*LAKESHORE)(?!.*COASTAL)(?!.*FLASH)",
+                  sdata$EVTYPE,perl = TRUE)] = "FLOOD"
+sdata$EVTYPE = as.factor(as.character(sdata$EVTYPE))
+sdata$EVTYPE[grep("^(?=.*FLD)",
+                  sdata$EVTYPE,perl = TRUE)] = "FLOOD"
+sdata$EVTYPE = as.factor(as.character(sdata$EVTYPE))
+
+sdata$EVTYPE[grep("^(?=.*FUNNEL)",
+                  sdata$EVTYPE,perl = TRUE)] = "FUNNEL CLOUD"
+sdata$EVTYPE = as.factor(as.character(sdata$EVTYPE))
+
+sdata$EVTYPE[grep("^(?=.*WIND)(?=.*CHILL)(?!.*EXTREME)(?!.*BITTER)",
+                  sdata$EVTYPE,perl = TRUE)] = "COLD/WIND CHILL"
+sdata$EVTYPE = as.factor(as.character(sdata$EVTYPE))
+
+sdata$EVTYPE[grep("^(?=.*RECORD)((?=.*LOW)|(?=.*COLD))(?!.*SNOW)(?!.*RAIN)",
+                  sdata$EVTYPE,perl = TRUE)] = "EXTREME COLD/WIND CHILL"
+sdata$EVTYPE = as.factor(as.character(sdata$EVTYPE))
+
+sdata$EVTYPE[grep("^(?=.*ICE)(?!.*SNOW)",
+                  sdata$EVTYPE,perl = TRUE)] = "ICE STORM"
+sdata$EVTYPE = as.factor(as.character(sdata$EVTYPE))
+
+sdata$EVTYPE[grep("^(?=.*SNOW)(?!.*LAKE)(?!.*LACK)((?=.*HEAVY)|(?=.*RECORD)|(?=.*EXCESSIVE))",
+                  sdata$EVTYPE,perl = TRUE)] = "HEAVY SNOW"
+sdata$EVTYPE = as.factor(as.character(sdata$EVTYPE))
+
+sdata$EVTYPE[grep("^(?=.*SNOW)(?=.*LAKE)",
+                  sdata$EVTYPE,perl = TRUE)] = "LAKE-EFFECT SNOW"
+sdata$EVTYPE = as.factor(as.character(sdata$EVTYPE))
+
+sdata$EVTYPE[grep("^(?=.*SNOW)(?!.*LAKE)(?!.*CH)",
+                  sdata$EVTYPE,perl = TRUE)] = "WINTER STORM"
+sdata$EVTYPE = as.factor(as.character(sdata$EVTYPE))
+
+sdata$EVTYPE[grep("^((?=.*FREEZE)|(?=.*FROST))",
+                  sdata$EVTYPE,perl = TRUE)] = "FROST/FREEZE"
+sdata$EVTYPE = as.factor(as.character(sdata$EVTYPE))
+
+sdata$EVTYPE[grep("^((?=.*SLEET)|(?=.*FREEZ))(?!.*RAIN)(?!.*FROST)",
+                  sdata$EVTYPE,perl = TRUE)] = "SLEET"
+sdata$EVTYPE = as.factor(as.character(sdata$EVTYPE))
+sdata$EVTYPE[grep("^((?=.*SLEET)|(?=.*FREEZ))(?=.*RAIN)(?!.*FROST)",
+                  sdata$EVTYPE,perl = TRUE)] = "SLEET"
+sdata$EVTYPE = as.factor(as.character(sdata$EVTYPE))
+
+sdata$EVTYPE[grep("^(?=.*SMOKE)",
+                  sdata$EVTYPE,perl = TRUE)] = "DENSE SMOKE"
+sdata$EVTYPE = as.factor(as.character(sdata$EVTYPE))
+
+sdata$EVTYPE[grep("^(?=.*TROP)(?=.*STORM)",
+                  sdata$EVTYPE,perl = TRUE)] = "TROPICAL STORM"
+sdata$EVTYPE = as.factor(as.character(sdata$EVTYPE))
+
+sdata$EVTYPE[grep("^(?=.*DROU)(?!.*EXCESS)",
+                  sdata$EVTYPE,perl = TRUE)] = "DROUGHT"
+sdata$EVTYPE = as.factor(as.character(sdata$EVTYPE))
+
+sdata$EVTYPE[grep("^(?=.*RECORD)((?=.*HEAT)|(?=.*HIGH))",
+                  sdata$EVTYPE,perl = TRUE)] = "EXCESSIVE HEAT"
+sdata$EVTYPE = as.factor(as.character(sdata$EVTYPE))
+sdata$EVTYPE[grep("^(?=.*HEAT)((?=.*EXCESS)|(?=.*EXTRE))",
+                  sdata$EVTYPE,perl = TRUE)] = "EXCESSIVE HEAT"
+sdata$EVTYPE = as.factor(as.character(sdata$EVTYPE))
+
+sdata$EVTYPE[grep("^(?=.*HEAT)(?!.*EXCESS)",
+                  sdata$EVTYPE,perl = TRUE)] = "HEAT"
+sdata$EVTYPE = as.factor(as.character(sdata$EVTYPE))
+
+sdata$EVTYPE[grep("^(?=.*RAIN)(?!.*LOW)",
+                  sdata$EVTYPE,perl = TRUE)] = "HEAVY RAIN"
+sdata$EVTYPE = as.factor(as.character(sdata$EVTYPE))
+
+sdata$EVTYPE[grep("^(?=.*TIDE)(?!.*\\bLOW)",
+                  sdata$EVTYPE,perl = TRUE)] = "STORM SURGE/TIDE"
+sdata$EVTYPE = as.factor(as.character(sdata$EVTYPE))
+sdata$EVTYPE[grep("^(?=.*STORM)(?=.*SURGE)",
+                  sdata$EVTYPE,perl = TRUE)] = "STORM SURGE/TIDE"
+sdata$EVTYPE = as.factor(as.character(sdata$EVTYPE))
+
+sdata$EVTYPE[grep("^(?=.*BITTER)",
+                  sdata$EVTYPE,perl = TRUE)] = "EXTREME COLD/WIND CHILL"
+sdata$EVTYPE = as.factor(as.character(sdata$EVTYPE))
+
+sdata$EVTYPE[grep("^(?=.*CURR)",
+                  sdata$EVTYPE,perl = TRUE)] = "RIP CURRENT"
+sdata$EVTYPE = as.factor(as.character(sdata$EVTYPE))
+
+sdata$EVTYPE[grep("^(?=.*WIND)(?=.*HIGH)((?=.*MARINE)|(?=.*SEA))",
+                  sdata$EVTYPE,perl = TRUE)] = "MARINE HIGH WIND"
+sdata$EVTYPE = as.factor(as.character(sdata$EVTYPE))
+
+sdata$EVTYPE[grep("^(?=.*WIND)(?=.*MARINE)(?=.*STM)",
+                  sdata$EVTYPE,perl = TRUE)] = "MARINE THUNDERSTORM WIND"
+sdata$EVTYPE = as.factor(as.character(sdata$EVTYPE))
+
+sdata$EVTYPE[grep("^(?=.*EXTREME)((?=.*COLD)|(?=.*CHILL))",
+                  sdata$EVTYPE,perl = TRUE)] = "EXTREME COLD/WIND CHILL"
+sdata$EVTYPE = as.factor(as.character(sdata$EVTYPE))
+
+sdata$EVTYPE[grep("^(?=.*WIND)((?=.*STRON)|(?=.*NON)|(?=.*GUST))(?!.*MARINE)(?!.*T*DER)(?!.*CH)(?!.*COLD)(?!.*DUST)(?!.*WAKE)(?!.*WAVE)(?!.*BURST)(?!.*SURF)(?!.*LAKE)",
+                  sdata$EVTYPE,perl = TRUE)] = "STRONG WIND"
+sdata$EVTYPE = as.factor(as.character(sdata$EVTYPE))
+
+sdata$EVTYPE[sdata$EVTYPE %in% c("WIND","WINDS")] = "STRONG WIND"
+sdata$EVTYPE = as.factor(as.character(sdata$EVTYPE))
+
+sdata$EVTYPE[grep("^(?=.*SURF)",
+                  sdata$EVTYPE,perl = TRUE)] = "HIGH SURF"
+sdata$EVTYPE = as.factor(as.character(sdata$EVTYPE))
+```
+
+Now, group the remaining event types with less than 20 events into one group titled `MISC`.
+```{r transform4, cache=TRUE}
+temprows <- sapply(levels(sdata$EVTYPE),
+                   function(x) nrow(filter(sdata, EVTYPE == x)))
+
+misc_names <- names(temprows)[temprows<20]
+misc_names <- misc_names[!(misc_names == "TSUNAMI")]
+sdata$EVTYPE <- ifelse(sdata$EVTYPE %in% misc_names,
+                       "MISC",as.character(sdata$EVTYPE))
+sdata$EVTYPE = as.factor(sdata$EVTYPE)
+```
+
+After combining 'event types' with low counts of entries into one type called `MISC`, we now have 62 different 'event types'. This is much more reasonable and better reflects the 'event types.'
+```{r}
+length(levels(sdata$EVTYPE))
+```
+
+Create a column that catagorizes the `IN_50` variable with two factors:  
+--  `50 States`:  one of the 50 US States  
+--  `CW, Trty, MiltS`:  a USA common wealth, territory, or military state  
+```{r transform5}
+sdata <- mutate(sdata, IN_50 = ifelse(sdata$STATE %in% states50,
+             "50 States","CW, Trty, MiltS"))
+sdata$IN_50 <- factor(sdata$IN_50, levels = c("CW, Trty, MiltS","50 States"))
+```
+
+Group by 'event type' and `IN_50`. Then create a simplified data.frame for 'Population Health' (`sdata_Health`) and 'Property Damage' (`sdata_DMG`), where the 'event types' have been sorted into descending order of impact. Finally, finish by rearranging the order of a few factors that will be helpful when plotting.
+```{r transform6}
+sdata <- group_by(sdata,EVTYPE,IN_50)
+sdata_sum <- summarize(sdata,proptot = sum(PROPTOTAL),croptot = sum(CROPTOTAL),
+                       totfatal = sum(FATALITIES),totinjs = sum(INJURIES))
+sdata_sum <- group_by(sdata_sum,EVTYPE)
+
+sdata_DMG <- melt(select(sdata_sum,-(totfatal:totinjs)))
+sdata_Health <- melt(select(sdata_sum,-(proptot:croptot)))
+
+sdata_DMG$EVTYPE <- factor(sdata_DMG$EVTYPE,
+                           levels = levels(
+                                 with(sdata_DMG, reorder(EVTYPE,-value,sum))
+                                 )
+                           )
+
+sdata_Health$EVTYPE <- factor(sdata_Health$EVTYPE,
+                              levels = levels(
+                                    with(sdata_Health, reorder(EVTYPE,-value,sum))
+                                    )
+                              )
+
+sdata_DMG$IN_50 <- with(sdata_DMG, factor(IN_50, levels = rev(levels(IN_50))))
+sdata_DMG$variable <- with(sdata_DMG, factor(variable, levels = rev(levels(variable))))
+
+sdata_Health$IN_50 <- with(sdata_Health, factor(IN_50, levels = rev(levels(IN_50))))
+
+head(sdata_DMG)
+head(sdata_Health)
+```
+
+### Results
+
+In this section, results will be presented by plots that answer the questions that follow. To supplement the plots, there are few commandline computations to justify how the results are presented.
+
+It is difficult to present 62 'event types' in one plot, so the analysis focuses on the top 16 influential events for both economic and health outcomes.
+
+#### Which types of events have the greatest economic consequences?
+
+As stated above, here we present the top 16 'event types' that resulted in greatest economic consequence. Because the 'event type' factors have been ordered in descending order of influence, it is easy to show that nearly all of the economic consequence is a result of these 16 events, and one-third is due to the top event:
+```{r}
+sum(aggregate(value~EVTYPE,sdata_DMG,sum)[1:16,"value"])/
+      sum(aggregate(value~EVTYPE,sdata_DMG,sum)[,"value"])
+sum(aggregate(value~EVTYPE,sdata_DMG,sum)[1,"value"])/
+      sum(aggregate(value~EVTYPE,sdata_DMG,sum)[,"value"])
+```
+
+The results are summarized by three plots:  
+1. The top 16 events, which account for 99% of the economic consequence.  
+2. Events 2-4, which form a nice subset, accounting for 41% of the economic costs.  
+```{r}
+sum(aggregate(value~EVTYPE,sdata_DMG,sum)[2:4,"value"])/
+      sum(aggregate(value~EVTYPE,sdata_DMG,sum)[,"value"])
+```
+3. Events 5-16, also forming a nice subset, accounting for the remaining 24% of economic costs.  
+```{r}
+sum(aggregate(value~EVTYPE,sdata_DMG,sum)[5:16,"value"])/
+      sum(aggregate(value~EVTYPE,sdata_DMG,sum)[,"value"])
+```
+
+The plots follow:  
+```{r propDamage}
+g_dmg_16 <- ggplot(filter(sdata_DMG,EVTYPE %in% levels(EVTYPE)[1:16]),
+      aes(x = EVTYPE,y = value/1000000000,fill = variable,alpha = IN_50)) +
+      geom_bar(stat= "identity",color = "grey20",lwd=.25) + 
+      xlab("Severe Weather Event") + ylab("Damage in US Dollars (Billion)") + 
+      labs(title = "Top 16 Property & Agricultral Damage Costs due to\nSevere Weather Events - 1950 to 2011",
+           subtitle = "Data displayed represents 99% of total costs") +
+#           caption = "data collected from 1950 to 2011") +
+      scale_fill_brewer(name = "", palette = "Set1",
+                        breaks = c("proptot","croptot"),
+                        labels = c("Property","Agriculture")) +
+      scale_alpha_manual(name = "Location", 
+                         breaks = c("50 States","CW, Trty, MiltS"),
+                         values = c(.6,1.),
+                         labels = c("50 States\n","Commonwealth,\n Territory,\n Military State")) +
+      theme(title = element_text(size = 10),legend.title = element_text(size = 6.5),
+            legend.key.size = unit(.5,"cm"),legend.text = element_text(size = 6.5),
+            axis.text.x = element_text(angle=80,vjust=.55,size=6.5))
+
+#g_dmg_2_4 <- ggplot(sd_DMG_2_4,
+g_dmg_2_4 <- ggplot(filter(sdata_DMG,EVTYPE %in% levels(EVTYPE)[2:4]),
+      aes(x = EVTYPE,y = value/1000000000,fill = variable,alpha = IN_50)) +
+      geom_bar(stat= "identity",color = "grey20",lwd=.25) + 
+      xlab("") + ylab("Damage in US Dollars (Billion)") + 
+      ggtitle("Events 2-4 (41% of total costs)") +
+      scale_fill_brewer(name = "", palette = "Set1",
+                        breaks = c("proptot","croptot"),
+                        labels = c("Property","Agriculture")) +
+      scale_alpha_manual(name = "Location", 
+                         breaks = c("50 States","CW, Trty, MiltS"),
+                         values = c(.6,1.),
+                         labels = c("50 States\n","Commonwealth,\n Territory,\n Military State")) +
+      theme(title = element_text(size = 10),legend.position = "none",
+            axis.text.x = element_text(angle=80,vjust=.55,size=6.5))
+
+#g_dmg_5_16 <- ggplot(sd_DMG_5_16, 
+g_dmg_5_16 <- ggplot(filter(sdata_DMG,EVTYPE %in% levels(EVTYPE)[5:16]), 
+      aes(x = EVTYPE,y = value/1000000000,fill = variable,alpha = IN_50)) +
+      geom_bar(stat= "identity",color = "grey20",lwd=.25) + 
+      xlab("") + ylab("Damage in US Dollars (Billion)") + 
+      ggtitle("Events 5-16 (24% of total costs)") +
+      scale_fill_brewer(name = "", palette = "Set1",
+                        breaks = c("proptot","croptot"),
+                        labels = c("Property","Agriculture")) +
+      scale_alpha_manual(name = "Location", 
+                         breaks = c("50 States","CW, Trty, MiltS"),
+                         values = c(.6,1.),
+                         labels = c("50 States\n","Commonwealth,\n Territory,\n Military State")) +
+      theme(title = element_text(size = 10),legend.position = "none",
+            axis.text.x = element_text(angle=80,vjust=.55,size=6.5))
+
+# Construct property damage plots
+grid.arrange(grobs = c(list(g_dmg_16), list(g_dmg_2_4,g_dmg_5_16)),
+             layout_matrix = rbind(c(1,1,2),c(1,1,3)))
+```
+
+#### Which types of events are most harmful to population health?
+
+As with economic outcomes, we present a similar justification for the results shown here.  
+
+In discussing population health, the results show a significantly segregated outcome. The top 16 'event types' account for 96% of total health outcomes, while the top spot is responsible for 62% of the outcome.
+```{r}
+sum(aggregate(value~EVTYPE,sdata_Health,sum)[1:16,"value"])/
+      sum(aggregate(value~EVTYPE,sdata_Health,sum)[,"value"])
+sum(aggregate(value~EVTYPE,sdata_Health,sum)[1,"value"])/
+      sum(aggregate(value~EVTYPE,sdata_Health,sum)[,"value"])
+```
+
+Here, the results are presented in two plots:   
+1. The top 16 events, accounting for 96%.  
+2. A closer examination of events 2-16, accounting for 34%.  
+```{r}
+sum(aggregate(value~EVTYPE,sdata_Health,sum)[2:16,"value"])/
+      sum(aggregate(value~EVTYPE,sdata_Health,sum)[,"value"])
+```
+
+The plots follow:
+```{r popHealth}
+g_Health_16 <- ggplot(filter(sdata_Health,EVTYPE %in% levels(EVTYPE)[1:16]),
+      aes(x = EVTYPE,y = value/1000,fill = variable,alpha = IN_50)) +
+      geom_bar(stat= "identity",color = "grey20",lwd=.25) + 
+      xlab("Severe Weather Event") + ylab("Population (thousands of people)") + 
+      labs(title = "Top 16 Population Health Costs due to\nSevere Weather Events - 1950 to 2011",
+           subtitle = "Data displayed represents 96% of total costs") +
+#           caption = "data collected from 1950 to 2011") +
+      scale_fill_brewer(name = "", palette = "Set1",
+                        breaks = c("totinjs","totfatal"),
+                        labels = c("Injuries","Fatalities")) +
+      scale_alpha_manual(name = "Location", 
+                         breaks = c("50 States","CW, Trty, MiltS"),
+                         values = c(.6,1.),
+                         labels = c("50 States\n","Commonwealth,\n Territory,\n Military State")) +
+      theme(title = element_text(size = 10), legend.title = element_text(size = 6.5),
+            legend.key.size = unit(.5,"cm"),legend.text = element_text(size = 6.5),
+            axis.text.x = element_text(angle=80,vjust=.55,size=6.5))
+
+#g_Health_2_16 <- ggplot(sd_Health_2_16, 
+g_Health_2_16 <- ggplot(filter(sdata_Health,EVTYPE %in% levels(EVTYPE)[2:16]),
+      aes(x = EVTYPE,y = value/1000,fill = variable,alpha = IN_50)) +
+      geom_bar(stat= "identity",color = "grey20",lwd=.25) + 
+      xlab("") + ylab("Population (thousands of people)") + 
+      labs(title = "Events 2-16", subtitle = "Data displayed represents 34% of total costs") +
+      scale_fill_brewer(name = "", palette = "Set1",
+                        breaks = c("totinjs","totfatal"),
+                        labels = c("Injuries","Fatalities")) +
+      scale_alpha_manual(name = "Location", 
+                         breaks = c("50 States","CW, Trty, MiltS"),
+                         values = c(.6,1.),
+                         labels = c("50 States\n","Commonwealth,\n Territory,\n Military State")) +
+      theme(title = element_text(size = 10),legend.position = "none",
+            axis.text.x = element_text(angle=80,vjust=.55,size=6.5))
+
+# Construct population health plots
+grid.arrange(grobs = c(list(g_Health_16), list(g_Health_2_16)),
+             layout_matrix = rbind(c(1,2),c(1,2)))
+```
+
+### Conclusions
+
+To summarize our findings, both economic and population health outcomes are dominated by only a dozen or so severe weather events, with the top spots accounting for a third and nearly two-thirds of economic and health outcomes, respectively.
+
+
+
+
+

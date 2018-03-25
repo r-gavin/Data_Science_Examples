@@ -1,0 +1,415 @@
+---
+title: "Statistical Inference Peer Graded Assignment"
+author: "Ryan Gavin"
+date: "3/16/2017"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE,
+                      message = FALSE,
+                      warning = FALSE)
+```
+
+This document explores some of the topcis covered in the *Statistical Inference* course. It is the final assignment.
+
+In **Part 1** we explore characteristics of the *exponential distribution* and how sample means and sample variance distributions of the *exponential distribution* conform to the *Central Limit Theorem*. In **Part 2**, an examination of the data collected during the *The Statistics of Bioassay*$^*$ study takes place, including exploratory data analysis and statistical inference.
+
+### **R** Requirements
+
+The following `R` libraries are required for our analysis.
+
+``` {r libraries}
+require(ggplot2)
+require(dplyr)
+require(reshape2)
+```
+
+# **Part 1**
+
+In **Part 1** we investigate the *exponential distribution* and the *Central Limit Theorem (CLT)*. We will simulate events taken from the exponential distribution, repeat the observation, and draw some conclusions from the results.
+
+## Exponential Distribution
+
+The exponential distribution (a.k.a. negative exponential distribution) is the probability distribution that describes the time between events in a Poisson process, i.e. a process in which events occur continuously and independently at a constant average rate.$^{**}$ It is described by the single parameter $\lambda$ and the probability density function takes the following form:
+
+$$f(x;\lambda) = 
+ \begin{cases}
+  \lambda e^{-\lambda x}  & x \ge 0\,, \\
+  0  & x < 0\,. \\
+ \end{cases}$$
+
+The mean of the exponential distribution is $1/\lambda$ and the standard deviation is $1/\lambda$. The mean is equal to the standard deviation. Below is an example of the distribution with $\lambda = 0.5$. The *mean* has been included - a vertical, blue dotted-line located at $x=2$ ($\bar{X} = 1/\lambda = 1/0.5 = 2$).
+
+
+```{r exp_dist, echo=FALSE}
+### Exponential Probability Density Function
+lambda <- 0.5
+fun.1 <- function(x) lambda*exp(-lambda*x)
+temp_dist <- data.frame(temp_x = c(seq(0,10,0.01),10,0), 
+                        temp_y = c(fun.1(seq(0,10,0.01)),0,0))
+### Plot distribution
+#p <- ggplot(temp_dist, aes(x = temp_x)) +
+p <- ggplot(temp_dist) +
+#      stat_function(fun = fun.1) + 
+      geom_polygon(aes(x = temp_x,y = temp_y), fill = "deepskyblue3",alpha = 0.3) +
+      xlim(0,10) + ylim(0,.5) +
+      ggtitle("Theoretical Exponential Distribution, Lambda = 0.5") +
+      xlab("x") + ylab("P(X=x; Lambda)") +
+      geom_vline(xintercept = 2, color = "royalblue4",lwd = 1,lty = 5)
+#p <- ggplotly(p)
+print(p)
+```
+
+## Simulations
+
+To investigate this distribution we'll run some simulations, randomly pulling events from an exponential. A single sample will consist of `n = 40` observations. We will repeat this sampling `B = 1000` times.
+
+We will also set $\lambda = 0.2$ so that $\bar{X} = \sigma = 5$.
+
+
+``` {r sims}
+set.seed(1002)
+
+lambda <- 0.2
+n <- 40
+B <- 1000
+
+exp_sim <- matrix(rexp(n*B,lambda),nrow = B,ncol = n)
+row.names(exp_sim) <- 1:B
+```
+
+#### Examples
+
+Let's examine these simulations a bit closer. We randomly picked four samples out of the one thousand generated and show their distributions below.
+
+```{r example1, echo=FALSE}
+ex_samp <- melt(t(exp_sim))
+samp1 <- sample(1:B,4)
+bwidth1 <- density(filter(tbl_df(ex_samp),Var2 %in% samp1)$value)$bw
+
+g1 <- ggplot(filter(tbl_df(ex_samp),Var2 %in% samp1), 
+             aes(x = value + bwidth1/2)) +
+       geom_histogram(aes(y=..density..), binwidth = bwidth1) +
+       geom_density(color = "black",fill="deepskyblue3", alpha = 0.2) +
+       facet_wrap( ~ Var2, nrow = 2) +  theme_bw() + #xlim(0,20) +
+       xlab("x") + ylab("Density") +
+       ggtitle("Four Random Samples",subtitle = "(40 observations each)")
+print(g1)
+```
+
+Although 40 observations for each sample isn't much, we can see that they start to resemble the exponential distribution. Density curves have been added to help illustrate the shape.
+
+As a comparison, we show four more distributions of cumulative random samples: 100 samples, 250 samples, 500 samples, and all 1000 samples.
+
+```{r example2, echo=FALSE}
+temp100 <- exp_sim[sample(1:B,100),]
+row.names(temp100) <- rep("100 Samples",100)
+temp250 <- exp_sim[sample(1:B,250),]
+row.names(temp250) <- rep("250 Samples",250)
+temp500 <- exp_sim[sample(1:B,500),]
+row.names(temp500) <- rep("500 Samples",500)
+temp1000 <- exp_sim
+row.names(temp1000) <- rep("1000 Samples",1000)
+
+ex_all <- rbind(temp100,temp250,temp500,temp1000)
+ex_all <- melt(t(ex_all))
+
+bwidth2 <- density(ex_samp$value)$bw
+
+g2 <- ggplot(ex_all, aes(x = value + bwidth2/2)) +
+       geom_histogram(aes(y=..density..), binwidth = bwidth2) +
+       geom_density(color = "black",fill="deepskyblue3", alpha = 0.2) +
+       facet_wrap( ~ Var2, nrow = 2) +  
+       theme_bw() + xlab("x") + ylab("Density") + #xlim(0,20) +
+       ggtitle("Various Sample Sizes",subtitle = "(40 observations each)")
+print(g2)
+```
+
+It becomes clear quite quickly that our samples added together resemble the exponential population they were taken from. The distribution becomes smoother and more like the exponential distribution with the more samples that are included, until we include all 1000 samples, for a total of 40000 observations. As before, density curves have been added.
+
+## Analysis of Simulations
+
+Calculating the mean and variance of each sample, we'll examine the distributions of the sample means and sample variance.
+
+```{r means_and_var}
+sim_mean <- apply(exp_sim,1,mean)
+sim_var <- apply(exp_sim,1,var)
+```
+
+#### Sample Means
+
+If we create a histogram of the 1000 sample means, we find the following distribution:
+
+```{r echo=FALSE}
+bwidth3 <- density(sim_mean)$bw
+g3 <- ggplot(data.frame(sim_mean), aes(x = sim_mean)) +
+       geom_histogram(aes(y=..density..), binwidth = bwidth3) +
+       theme_bw() + xlab("Mean") + ylab("Density") +
+       ggtitle("Distribution of Sample Means") +
+       geom_vline(xintercept = 5, color = "blue",lwd = 0.5,lty = 5) +
+       geom_vline(xintercept = mean(sim_mean), color = "red",lwd = 0.75,lty = 3) +
+       geom_polygon(data = data.frame(
+             x_temp = c(seq(3,8,0.01),8,3),
+             y_temp = c(dnorm(seq(3,8,0.01),mean = 5,sd = 5/sqrt(40)),0,0)
+                  ), aes(x=x_temp,y=y_temp),fill = "deepskyblue3",alpha = 0.3
+             )
+print(g3)
+```
+
+There are a few interesting characterisics to point out. The **red, short dotted-line** represents the *mean* of the sample means.
+``` {r}
+mean(sim_mean)
+```
+According to the *Central Limit Theorem*, the *mean* of the sample means should approach the theoretical mean of the sample population. In this scenario, the theoretical mean, $\bar{X}$, is equal to $1/\lambda = 5$. The **blue, long dotted-line** represents the theoretical mean. It is easy to see that the two means overlap and are nearly the same.
+
+Another characteristic worth investigating is the *variabililty* of the sample means distribution. Again, according to the *CLT* the *standard deviation* should follow the the variance of the population, $\sigma^2$. The *standard deviation* of the sample means is, in fact, $\sigma/\sqrt{n}$. However, a property of the exponential distribution is that the variance, $\sigma^2$, is related to $\lambda$ by $\sigma^2 = 1/\lambda^2 = 25$. Therefore, the *standard error of the means* should approach $\sigma/\sqrt{n} = 1/\lambda * 1/\sqrt{n} = 5/sqrt(40)$:
+```{r}
+5/sqrt(40)
+```
+We can calculate the *standard deviation* of our sample means:
+```{r}
+sd(sim_mean)
+```
+We see that they are quite close.
+
+Finally, the *CLT* states that the distribution of sample means should form a *normal (Gaussian) distribution* centered around the mean of the population ($\mu = 5$) with a standard deviation of $\sigma/\sqrt{n} = 5/\sqrt{40}$: $\;N(\mu,s) = N(5,5/\sqrt{40})$.
+This normal distribution has been ploted with the histogram, with its area shaded a light blue. We can see that this *bell curve* does a very nice job of characterizing the sample means distribution.
+
+#### Sample Variance
+
+Lastly, we'll take a look at the sample variance. As before, the *CLT* tells us that the distribution of the sample variance should be normal, centered at the theoretical variance of the population - in this case $\sigma^2 = 1/\lambda^2 = 5^2 = 25$.
+
+```{r, echo=FALSE}
+bwidth4 <- density(sim_var)$bw
+g4 <- ggplot(data.frame(sim_var), aes(x = sim_var)) +
+       geom_histogram(aes(y=..density..), binwidth = bwidth4) +
+       theme_bw() + xlab("Variance") + ylab("Density") +
+       ggtitle("Distribution of Sample Variances") +
+       geom_vline(xintercept = 25, color = "blue",lwd = 0.5,lty = 5) +
+       geom_vline(xintercept = mean(sim_var), color = "red",lwd = 0.75,lty = 3) +
+       geom_polygon(data = data.frame(
+             x_temp = c(seq(6,80,0.01),80,6),
+             y_temp = c(dnorm(seq(6,80,0.01),mean = 25,sd = sd(sim_var)),0,0)
+                  ), aes(x=x_temp,y=y_temp),fill = "deepskyblue3",alpha = 0.3
+             )
+print(g4)
+```
+
+The average of the sample variance is represented by the **red, short dotted-line**. It has the following value:
+```{r}
+mean(sim_var)
+```
+The theoretical variance of our exponentially distributed population is $\sigma^2 = 1/\lambda^2 = 25$, and is represented in the distribution by a **blue, long dotted-line**. We can see that they overlap and are nearly the same. The distribution is starting to take normal shape, but is shifted slightly to the left. The distribution of sample variance would become more normal with sufficiently more samples. To roughly fit the histogram with a normal distribution around $\bar{\sigma^2} = 25$, we manually calculate the standard deviation of the sample variance,
+```{r}
+sd(sim_var)
+```
+and use that for the normal distribution. It has been added with an area that is shaded light blue.
+
+
+
+
+
+# **Part 2**
+
+In **Part 2** we will investigate the dataset *ToothGrowth*. This dataset contains data taken while tracking the tooth growth in 60 different guinea pigs while receiving doses of Vitamin C. The vitamin was delivered via two different supplements: Orange Juice (`supp = OJ`) and Ascorbic Acid (`supp = VC`). For each supplement, three different dosages were administered: 0.5, 1, or 2 mg/day. See the following table for a complete layout of the data taken in the study.
+
+  Supplement (`supp`)  |  Dosage, mg/day (`dose`)  |  Length of Tooth Growth (`len`)
+-----------------------|---------------------------|----------------------------------
+         `OJ`          |           `0.5`           |  `tooth growth length (#) for 10 guinea pigs `
+         `OJ`          |           `1.0`           |  `tooth growth length (#) for 10 guinea pigs `
+         `OJ`          |           `2.0`           |  `tooth growth length (#) for 10 guinea pigs `
+         `VC`          |           `0.5`           |  `tooth growth length (#) for 10 guinea pigs `
+         `VC`          |           `1.0`           |  `tooth growth length (#) for 10 guinea pigs `
+         `VC`          |           `2.0`           |  `tooth growth length (#) for 10 guinea pigs `
+
+With 10 guinea pigs in each of the six studies, we get our 60 *total* guinea pigs.
+
+We'll load the data set and confirm these unique variables.
+```{r}
+data("ToothGrowth")
+head(ToothGrowth)
+unique(ToothGrowth$supp)
+unique(ToothGrowth$dose)
+```
+
+## Exploratory Analysis
+
+A quick plot showing *length* versus *dosage*, with the distinction of *supplement*.
+
+```{r, echo=FALSE}
+g5 <- ggplot(ToothGrowth, aes(x=dose,y=len,color=supp)) +
+      geom_point(pch = 19, alpha = .6, cex = 3) + 
+      ggtitle("ToothGrowth Data Set",subtitle = "Length of Growth vs Dosage") +
+      xlab("Dosage (mg/day)") + ylab("Length")
+print(g5)
+```
+
+
+A *boxplot* might be more informative, giving us, perhaps, a better idea of the median and variability of each scenario.
+
+```{r, echo=FALSE}
+g6 <- ggplot(ToothGrowth, aes(x=supp,y=len,group=supp,color=supp,fill=supp,alpha=.3)) +
+      geom_boxplot() + facet_grid(.~dose) +
+      ggtitle("ToothGrowth Data Set",
+              subtitle = "Boxplot of Length of Growth vs Supplement: Separated by Dossage") +
+      xlab("Supplement") + ylab("Length")
+print(g6)
+```
+
+To summarize the results, we can find the *mean* and *standard deviation* for each of the six scenarios:
+```{r}
+summarise(group_by(ToothGrowth,supp,dose),mean(len))
+summarise(group_by(ToothGrowth,supp,dose),sd(len))
+```
+It looks as if the `0.5` and `1.0` doses of `OJ` provide more growth than `VC`. However, the variability of `VC` is less than that of `OJ` for these two doses. When comparing a dose of `2.0`, `OJ` and `VC` perform comparably but now `VC` has the larger spread. 
+
+Let's investigate these claims further.
+
+## Testing
+
+Let's use *Hypothesis Testing* and *Confidence Intervals* to reach conclusions about our summary (from above) of the data. This testing will be done using **Student's (Gosset's) t-test**. As a good rule of thumb, when using t-tests with small sample sizes, like we are here, the sample should follow, roughly, a normal distribution. Below is a histogram of tooth growth versus dosage versus supplement:
+
+```{r, echo=FALSE}
+g7 <- ggplot(ToothGrowth, aes(x=len)) +
+      geom_histogram(aes(y=..density..),color="black",lwd=.25,fill="deepskyblue4",alpha = .4) +
+      facet_grid(supp~dose) + xlab("Length") + ylab("Density") +
+      ggtitle("ToothGrowth Data Set",
+              subtitle="Tooth Growth Length Distributions for each Dosage with each Supplement")
+print(g7)
+```
+
+Although some of the plots look skewed or spread out, each looks "normal" enough for us to proceed with our analysis using **t-tests**.
+
+#### `Dosage = 0.5 mg/day`
+
+We begin with the (null) hypothesis that the Orange Juice (`OJ`) promotes the same tooth growth in guinea pigs as Ascorbic Acid (`VC`). As an alternative hypothesis, we suggest that `OJ` promotes *more* tooth growth than `VC`. See the following formal statement:  
+$$\begin{aligned} 
+   H_0 &: \,\, \mu_{OJ} = \mu_{VC} \\ 
+   H_a &: \,\, \mu_{OJ} > \mu_{VC} 
+\end{aligned}$$
+
+To build our **independent, two sample t-test statistic**, let's summarize our findings from the `0.5 mg/day` dosage:
+
+  Supplement (`supp`) at `0.5 mg/day`  |  Mean Length ($\bar{X}$)  |  Sample Standard Deviation ($s$)
+---------------------------------------|---------------------------|----------------------------------
+`OJ` | `r mean(filter(ToothGrowth, supp == "OJ", dose == 0.5)$len)` | `r sd(filter(ToothGrowth, supp == "OJ", dose == 0.5)$len)`
+`VC` | `r mean(filter(ToothGrowth, supp == "VC", dose == 0.5)$len)` | `r sd(filter(ToothGrowth, supp == "VC", dose == 0.5)$len)`
+
+Given the sample sizes, we choose to treat the variances as *unequal*. This should result in a slightly more conservative result. In doing so, we need to use the following equations to build our t-test statistic:
+
+$$\begin{aligned} 
+   t &= \frac{\bar{X}_{OJ}-\bar{X}_{VC}}{s_{\bar{\Delta}}}  \\ \\
+   s_{\bar{\Delta}} &= \sqrt{\frac{s^2_{OJ}}{n_{OJ}}+\frac{s^2_{VC}}{n_{VC}}}
+\end{aligned}$$
+
+Special attention must also be paid to the *degrees of freedom* (*d.o.f.*) when treating the sample variances as unequal:
+
+$$\begin{aligned} 
+   d.o.f. &= \frac{ ( s^2_{OJ}/n_{OJ} + s^2_{VC}/n_{VC} )^2 }
+   { (s^2_{OJ}/n_{OJ})^2/(n_{OJ}-1) + (s^2_{VC}/n_{VC})^2/(n_{VC}-1)}
+\end{aligned}$$
+
+
+We've created two R functions, `s_delta(s1,s2,n1,n2)` and `dof(s1,s2,n1,n2)`, to help with the calculation of the t-test statistic:
+
+```{r}
+s_delta <- function(s1,s2,n1,n2) sqrt(s1^2/n1 + s2^2/n2)
+dof <- function(s1,s2,n1,n2) {
+      (s1^2/n1+s2^2/n2)^2 / ( (s1^2/n1)^2 / (n1-1) + (s2^2/n2)^2 / (n2-1) )
+}
+```
+
+So, to complete our testing, we need to complete the following:
+
+```{r}
+diff_in_means <- 13.23 - 7.98
+t <- diff_in_means/s_delta(4.4597085,2.7466343,10,10)
+the_dof <- dof(4.4597085,2.7466343,10,10)
+conf_95 <- 13.23 - 7.98 + c(-1,1) * qt(.95,the_dof) * s_delta(4.4597085,2.7466343,10,10)
+```
+
+**We can finally conclude our analysis.**  
+
+> After an inspection of the `OJ` and `VC` sample distributions, we determined that they were sufficently normal to proceed with the **Student's t-test**. Given the sample size and our lack of knowledge of the sample standard deviations, we decided to continue with *unequal* variances. An independent t-test was run on data with a 95% confidence interval (CI) for the mean difference ($H_0 : \,\, \bar{X}_{OJ} = \bar{X}_{VC}$ or $H_0 : \,\, \bar{X}_{OJ} - \bar{X}_{VC} = 0$). It was found that Orange Juice promoted more tooth growth ($\bar{X}_{OJ} = 13.23 \pm 4.46$) than Ascorbic Acid ($\bar{X}_{VC} = 7.98 \pm 2.75$) with a difference in means of `r diff_in_means` (`diff_in_means`) and 95% CI of (`r conf_95`) (`conf_95`). The t-test statistic is `t(the_dof) = t` which is `t(``r the_dof``) = ` `r t`. The corresponding p-value is `pt(t,the_dof,lower.tail=FALSE) = ` `r pt(t,the_dof,lower.tail=FALSE)` and is statistically significant. Therefore, we can reject our null hypothesis and favor the alternative hypothesis, $H_a : \,\, \bar{X}_{OJ} > \bar{X}_{VC}$.
+
+We can check this 'by-hand' calculation against the built-in `R` function `t.test`.
+
+```{r}
+t.test(
+      filter(ToothGrowth,supp=="OJ",dose==0.5)$len,
+      filter(ToothGrowth,supp=="VC",dose==0.5)$len,
+      alternative="greater",paired=FALSE,var.equal=FALSE)
+```
+
+We see that our analysis matches the analysis by the `R` function `t.test`. As a novice statistician, this should give us confidence in our analysis.
+
+
+#### `Dosage = 1.0 mg/day`
+
+We begin with the (null) hypothesis that the Orange Juice (`OJ`) promotes the same tooth growth in guinea pigs as Ascorbic Acid (`VC`). As an alternative hypothesis, we suggest that `OJ` promotes *more* tooth growth than `VC`. See the following formal statement:  
+$$\begin{aligned} 
+   H_0 &: \,\, \mu_{OJ} = \mu_{VC} \\ 
+   H_a &: \,\, \mu_{OJ} > \mu_{VC} 
+\end{aligned}$$
+
+As before, let's summarize our findings from the `1.0 mg/day` dosage:
+
+  Supplement (`supp`) at `1.0 mg/day`  |  Mean Length ($\bar{X}$)  |  Sample Standard Deviation ($s$)
+---------------------------------------|---------------------------|----------------------------------
+`OJ` | `r mean(filter(ToothGrowth, supp == "OJ", dose == 1.0)$len)` | `r sd(filter(ToothGrowth, supp == "OJ", dose == 1.0)$len)`
+`VC` | `r mean(filter(ToothGrowth, supp == "VC", dose == 1.0)$len)` | `r sd(filter(ToothGrowth, supp == "VC", dose == 1.0)$len)`
+
+With understanding of the underlying procedure and trust in the `R` function `t.test`, we can confidently perform our analysis with `t.test`:
+
+```{r}
+t.test(
+      filter(ToothGrowth,supp=="OJ",dose==1.0)$len,
+      filter(ToothGrowth,supp=="VC",dose==1.0)$len,
+      alternative="greater",paired=FALSE,var.equal=FALSE)
+```
+
+**From this, we can conclude our analysis at `1.0 mg/day`.**
+
+> After an inspection of the `OJ` and `VC` sample distributions, we determined that they were sufficently normal to proceed with the **Student's t-test**. Given the sample size and our lack of knowledge of the sample standard deviations, we decided to continue with *unequal* variances. An independent t-test was run on data with a 95% confidence interval (CI) for the mean difference. It was found that Orange Juice promoted more tooth growth ($\bar{X}_{OJ} = 22.7 \pm 3.9$) than Ascorbic Acid ($\bar{X}_{VC} = 16.77 \pm 2.52$) with a difference in means of `r 22.7-16.77` and 95% CI of (`3.356161, 8.503839`). The t-test statistic is `4.0328`. The corresponding p-value is `0.0005192` and is statistically significant. Therefore, we can reject our null hypothesis and favor the alternative hypothesis, $H_a : \,\, \bar{X}_{OJ} > \bar{X}_{VC}$.
+
+
+#### `Dosage = 2.0 mg/day`
+
+We begin with the (null) hypothesis that the Orange Juice (`OJ`) promotes the same tooth growth in guinea pigs as Ascorbic Acid (`VC`). As an alternative hypothesis, we suggest that `OJ` promotes *more* tooth growth than `VC`. See the following formal statement:  
+$$\begin{aligned} 
+   H_0 &: \,\, \mu_{OJ} = \mu_{VC} \\ 
+   H_a &: \,\, \mu_{OJ} > \mu_{VC} 
+\end{aligned}$$
+
+As before, let's summarize our findings from the `2.0 mg/day` dosage:
+
+  Supplement (`supp`) at `2.0 mg/day`  |  Mean Length ($\bar{X}$)  |  Sample Standard Deviation ($s$)
+---------------------------------------|---------------------------|----------------------------------
+`OJ` | `r mean(filter(ToothGrowth, supp == "OJ", dose == 2.0)$len)` | `r sd(filter(ToothGrowth, supp == "OJ", dose == 2.0)$len)`
+`VC` | `r mean(filter(ToothGrowth, supp == "VC", dose == 2.0)$len)` | `r sd(filter(ToothGrowth, supp == "VC", dose == 2.0)$len)`
+
+With understanding of the underlying procedure and trust in the `R` function `t.test`, we can confidently perform our analysis with `t.test`:
+
+```{r}
+t.test(
+      filter(ToothGrowth,supp=="OJ",dose==2.0)$len,
+      filter(ToothGrowth,supp=="VC",dose==2.0)$len,
+      alternative="greater",paired=FALSE,var.equal=FALSE)
+```
+
+**From this, we can conclude our analysis at `2.0 mg/day`.**
+
+> After an inspection of the `OJ` and `VC` sample distributions, we determined that they were sufficently normal to proceed with the **Student's t-test**. Given the sample size and our lack of knowledge of the sample standard deviations, we decided to continue with *unequal* variances. An independent t-test was run on data with a 95% confidence interval (CI) for the mean difference. It was found that Orange Juice promoted the same tooth growth ($\bar{X}_{OJ} = 26.06 \pm 2.66$) as Ascorbic Acid ($\bar{X}_{VC} = 26.14 \pm 4.80$) with a difference in means of `r 26.06-26.14` and 95% CI of (`-3.133497, 2.973497`). The t-test statistic is `-0.046136`. The corresponding p-value is `0.5181`. Therefore, we can accept our null hypothesis, $H_0 : \,\, \bar{X}_{OJ} = \bar{X}_{VC}$.
+
+# Conclusion
+
+In this assignment we examined the *exponential distribution* and some of its characteristics. By simulating events, we constructing distributions of sample means and sample variance. We observed that these distributions are normal and subscribe nicely to the *Central Limit Theorem*. 
+
+We also reevaluated data that was taken during a previous experiment to investigate the effectiveness of Vitamin C to promote tooth growth in guinea pig. Vitamin C was administered via Orange Juice or Ascorbic Acid in three different doses. We found that Orange Juice given in doses of 0.5 and 1.0 mg/day promoted more tooth growth than Ascorbic Acid that was statistically significant. A dosage of 2.0 mg/day resulted in no discernable difference in growth promotion between Orange Juice and Ascorbic Acid.
+
+------------------
+$^{*}$ C. I. Bliss (1952) *The Statistics of Bioassay*. Academic Press.
+$^{**}$ https://en.wikipedia.org/wiki/Exponential_distribution

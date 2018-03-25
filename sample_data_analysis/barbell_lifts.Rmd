@@ -1,0 +1,362 @@
+---
+title: "Classifying Quality of Barbell Lifts through Human Activity Recognition"
+author: "Ryan Gavin"
+date: "5/18/2017"
+output: html_document
+#    fig_width: 5.5
+#    fig_height: 5
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE,
+                      message = FALSE,
+                      warning = FALSE)
+```
+
+### Executive Summary
+
+*Human Activity Recognition* (HAR) devices such as *Jawbone Up*, *Nike FuelBand*, and *Fitbit* make it possible to analyze human movement in order to quantify different aspects of the motion: activity type, duration, etc. However, these devices rarely qualify how *well* a human is performing that activity. This report details an analysis of the **Weight Lifting Exercises Dataset**$^*$ and an effort to create a predictive model to classify the quality of activity, where barbell lifts are the specific activity. The data is collected from accelerometers on the belt, forearm, arm, and dumbell of 6 participants.
+
+In the end, we decided on the model that was trained using *only* the **Random Forest** algorithm with an accuracy of **99.44%** on the cross validation dataset.
+
+### Data Processing
+
+After loading the necessary libraries, we read in the data from a `csv` file. We also remove the first seven columns because they contain information that is not pertinent to our current study.
+``` {r libraries_and_Data}
+require(ggplot2)
+require(plyr)
+require(dplyr)
+require(caret)
+require(lattice)
+require(glmnet)
+require(Matrix)
+require(foreach)
+require(rpart)
+require(ipred)
+require(e1071)
+require(randomForest)
+require(gbm)
+require(survival)
+require(splines)
+require(parallel)
+
+theData <- read.csv("pml-training.csv",na.strings = c("","NA"),stringsAsFactors = FALSE)
+theData <- theData[,-c(1:7)]
+```
+
+A brief examination of the data shows that there are several columns containing `NA`'s where numeric observables should be. A small analysis was performed where the sum of numeric observations (not `NA` entries) was found for each column. Looking at a *unique* set of these sums we find the following:
+
+```{r tidy_up1}
+na_list <- sort(unique(apply(theData[,-dim(theData)[2]],2,
+                  function(x) sum(!is.na(as.numeric(x))))), decreasing = TRUE)
+na_list
+```
+
+The list above tells us that a column with full entries matches the total number of observations, `dim(theData)[1] =` `r dim(theData)[1]`. This is what we'd expect. The next *most complete* columns contain `r na_list[2]` **non-**`NA` entries. Taking the ratio `na_list[2]/na_list[1]`, we find that at most `r round(na_list[2]/na_list[1]*100,3)`% of our total observations would contain extra features to include in our model. We believe this is *not* a significant percentage, and feel that excluding all columns that contain missing data (`NA`'s) rather than trying to handle missing data another way is the best strategy for ensuring a tidy dataset. We also feel that our final model without these columns (features) will be more than sufficient.
+
+So, we eliminate any column containing at least one `NA`:
+
+``` {r tidy_up2}
+theData <- theData[ ,
+      apply(theData[,-dim(theData)[2]],2,function(x) !any(is.na(as.numeric(x))))]
+theData$classe <- as.factor(theData$classe)
+```
+
+Our final dataset has `r dim(theData)[1]` observations, each with `r dim(theData)[2]` features.
+
+### Exploratory Analysis
+
+Our final goal is to build a model that will predict the quality of the a barbell lift. This *quality* is represented by the last feature in our data set, `classe`:
+```{r classe}
+unique(theData$classe)
+```
+
+It is difficult to visually compare 52 or 53 features, at least in a tidy fashion. So, we have compiled correlation matrices, one for each `classe`, for all features except for the `classe` itself. Within each matrix, we find the number of feature pairs that have a correlation with an absolute value greater than 80%, and then find what percentage these feature pairs are of the total number of possible correlations.
+
+```{r correlations}
+num_cor <- (52*52 - 52)/2
+
+M_A <- abs(cor(filter(theData,classe == "A")[,-53]))
+M_B <- abs(cor(filter(theData,classe == "B")[,-53]))
+M_C <- abs(cor(filter(theData,classe == "C")[,-53]))
+M_D <- abs(cor(filter(theData,classe == "D")[,-53]))
+M_E <- abs(cor(filter(theData,classe == "E")[,-53]))
+
+diag(M_A) <- 0
+diag(M_B) <- 0
+diag(M_C) <- 0
+diag(M_D) <- 0
+diag(M_E) <- 0
+
+## classe == A
+(dim(which(M_A > 0.8,arr.ind = T))[1]/2)/num_cor
+## classe == B
+(dim(which(M_B > 0.8,arr.ind = T))[1]/2)/num_cor
+## classe == C
+(dim(which(M_C > 0.8,arr.ind = T))[1]/2)/num_cor
+## classe == D
+(dim(which(M_D > 0.8,arr.ind = T))[1]/2)/num_cor
+## classe == E
+(dim(which(M_E > 0.8,arr.ind = T))[1]/2)/num_cor
+```
+
+From the analysis above, we see that at most, approximately 3% of feature pairs are correlated by greater than 80%. We conclude that the features are linearly independent to a good approximation. Therefore, we believe that preprocessing the data will do little to help improve our final model, i.e. we can safely proceed while including all 52 features to predict `classe`.
+
+### Training & Models
+
+Now that we have a tidy dataset, and have a (somewhat) better understanding of the data, we can begin training different models and examine their performance.
+
+Although mentioned above, we outline the model we wish to build:  
+
+* dependent variable: `classe`  
+      + we wish to predict the quality of the barbell lift: quality = `classe = A,B,C,D,E`  
+* independent variables: all remaining (52) features  
+      + `roll_PPP`  
+      + `pitch_PPP`  
+      + `yaw_PPP`  
+      + `total_accel_PPP`  
+      + `gyros_PPP_XYZ`  
+      + `accel_PPP_XYZ`  
+      + `magnet_PPP_XYZ`  
+      + where `PPP` = belt, arm, dumbell, or forearm  
+      + where `XYZ` = x, y, or z  
+
+#### Procedure
+
+We begin by creating a partition in our data to create two datasets:  
+
+* training  
+* cross validation  
+
+```{r training}
+set.seed(1001)
+toTrain <- createDataPartition(y = theData$classe, p = 0.7)
+trainData <- theData[toTrain[[1]],]
+crossData <- theData[-toTrain[[1]],]
+```
+
+The training dataset, `trainData`, will be used to train the model. The cross validation dataset, `crossData`, will be used to evaluate bias and variance within the model, as well as compare models against each other. 
+
+We've decided to train **five** different algorithms and compare their performances on the cross validation dataset. At the very heart of our model is *classification* problem. We've chosen to try the following algorithms to reflect that:
+
+* Logistical Regression  
+* Decision Tree  
+* Bagging (Bootstrap Aggregating)  
+* Random Forest  
+* Boosting  
+
+Ostensibly, the best performing algorithm will be chosen as our final model. We will examine the possibility of combining models.
+
+#### 1. Regularized Logistical Regression
+
+We choose to impliment *regularized* logistical regression to help avoid over-fitting to our 52 features.
+
+**Using `glmnet`** :
+
+```{r reglog, cache=TRUE}
+fit_reglog <- train(classe~., method = "glmnet", family = "multinomial", data = trainData)
+
+pred_reglog_train <- predict(fit_reglog, newdata = trainData)
+cM_reglog_train <- confusionMatrix(pred_reglog_train,trainData$classe)
+
+pred_reglog_cross <- predict(fit_reglog, newdata = crossData)
+cM_reglog_cross <- confusionMatrix(pred_reglog_cross,crossData$classe)
+```
+
+#### 2. Decision Tree
+
+Decision tree learning is a common predictive model in data science.
+
+- Pros  
+      - better performance for nonlinear settings  
+      - easy to interpret  
+- Cons  
+      - without cross-validation can lead to overfitting  
+      - harder to estimate uncertainty  
+      - results may be variable  
+
+**Using `rpart2`** :
+
+```{r dtree, cache=TRUE}
+fit_dtree <- train(classe~., method = "rpart2", data = trainData)
+
+pred_dtree_train <- predict(fit_dtree, newdata = trainData)
+cM_dtree_train <- confusionMatrix(pred_dtree_train,trainData$classe)
+
+pred_dtree_cross <- predict(fit_dtree, newdata = crossData)
+cM_dtree_cross <- confusionMatrix(pred_dtree_cross,crossData$classe)
+```
+
+#### 3. Bagging (Bootstrap Aggregating)
+
+Bootstrap aggregating (bagging) is a meta-algorithm designed to improve the stability and accuracy of machine learning algorithms used in statistical classification and regression. Bagging is a special case of the model averaging approach.  
+
+- similiar bias  
+- reduced variance  
+- more useful for non-linear functions  
+- often used with trees  
+
+**Using `treebag` (bagged decision tree)**:
+
+```{r bag, cache=TRUE}
+fit_bag <- train(classe~., method = "treebag", data = trainData)
+
+pred_bag_train <- predict(fit_bag, newdata = trainData)
+cM_bag_train <- confusionMatrix(pred_bag_train,trainData$classe)
+
+pred_bag_cross <- predict(fit_bag, newdata = crossData)
+cM_bag_cross <- confusionMatrix(pred_bag_cross,crossData$classe)
+```
+
+#### 4. Random Forests
+
+Random forests are an ensemble learning method for classification and regression that operate by constructing a many decision trees at the time of training. Typically it is one of the top performing algorithms. It can be difficult to interpret but is very accurate in its prediction. However, care should be taken to avoid overfitting:
+
+- Pros  
+      - accuracy  
+- Cons  
+      - speed  
+      - interpretability  
+      - overfitting  
+
+**Using `rf`**:
+
+```{r rf, cache=TRUE}
+fit_rf <- train(classe~., method = "rf", data = trainData)
+
+pred_rf_train <- predict(fit_rf, newdata = trainData)
+cM_rf_train <- confusionMatrix(pred_rf_train,trainData$classe)
+
+pred_rf_cross <- predict(fit_rf, newdata = crossData)
+cM_rf_cross <- confusionMatrix(pred_rf_cross,crossData$classe)
+```
+
+#### 5. Boosting
+
+Boosting is a machine learning ensemble meta-algorithm for a family of machine learning algorithms which convert weak learners to strong ones. It can be used with any subset of classifiers.
+
+**Using `gbm` (stochastic gradient (trees) boosting)**:
+
+```{r boost, cache=TRUE}
+fit_boost <- train(classe~., method = "gbm", data = trainData, verbose = FALSE)
+
+pred_boost_train <- predict(fit_boost, newdata = trainData)
+cM_boost_train <- confusionMatrix(pred_boost_train,trainData$classe)
+
+pred_boost_cross <- predict(fit_boost, newdata = crossData)
+cM_boost_cross <- confusionMatrix(pred_boost_cross,crossData$classe)
+```
+
+#### 6. Model Summary
+
+In the table below, we summarize our results from the **five** models above.
+
+Model  |  `caret` method  |  Cross Validation Accuracy  
+-----------|------------------|--------------------------  
+(L2) Regularized Logistical Regression  |  `glmnet`  |  `r cM_reglog_cross$overall[1]`  
+Decision Tree  |  `rpart2`  |  `r cM_dtree_cross$overall[1]`  
+Bootstrap Aggretating (Bagging)  |  `treebag`  |  `r cM_bag_cross$overall[1]`  
+Random Forest  |  `rf`  |  `r cM_rf_cross$overall[1]`  
+Boosting  |  `gbm`  |  `r cM_boost_cross$overall[1]`  
+
+We can see that bagging, random forest, and boosting all work similarly well. However, our **random forest** based model performed the best.
+
+#### 7. Combining Classifiers
+
+It might be worth considering an ensemble of our top three models and see if they perform better together than our random forest did. 
+
+So, we combine our top three models  
+
+1. Random Forest  
+2. Bagging  
+3. Boosting  
+
+and combine them using three different algorithms
+
+1. Random Forest
+2. Bagged Classification Tree
+3. Boosted Classification Tree
+
+```{r ensemble, cache=TRUE}
+sum_pred_train_DF <- data.frame(
+      bag = pred_bag_train, rf = pred_rf_train, 
+      boost = pred_boost_train, classe = trainData$classe)
+
+sum_fit_rf <- train(classe ~ ., method = "rf", data = sum_pred_train_DF)
+sum_fit_tb <- train(classe ~ ., method = "treebag", data = sum_pred_train_DF)
+sum_fit_gbm <- train(classe ~ ., method = "gbm", data = sum_pred_train_DF, verbose = FALSE)
+
+pred_sum_train_rf <- predict(sum_fit_rf,sum_pred_train_DF)
+pred_sum_train_tb <- predict(sum_fit_tb,sum_pred_train_DF)
+pred_sum_train_gbm <- predict(sum_fit_gbm,sum_pred_train_DF)
+
+sum_pred_cross_DF <- data.frame(
+      bag = pred_bag_cross, rf = pred_rf_cross, 
+      boost = pred_boost_cross, classe = crossData$classe)
+
+pred_sum_cross_rf <- predict(sum_fit_rf,sum_pred_cross_DF)
+pred_sum_cross_tb <- predict(sum_fit_tb,sum_pred_cross_DF)
+pred_sum_cross_gbm <- predict(sum_fit_gbm,sum_pred_cross_DF)
+```
+
+Again, we will compare model performances with cross validation accuracy.
+
+```{r }
+cM_comb_rf_cross <- confusionMatrix(pred_sum_cross_rf,sum_pred_cross_DF$classe)
+cM_comb_tb_cross <- confusionMatrix(pred_sum_cross_tb,sum_pred_cross_DF$classe)
+cM_comb_gbm_cross <- confusionMatrix(pred_sum_cross_gbm,sum_pred_cross_DF$classe)
+```
+
+Model  |  `caret` method  |  Training Accuracy  |  Cross Validation Accuracy  
+-----------|------------------|-----------------|------------------------------  
+Random Forest - Only  |  `rf`  |  `r cM_rf_train$overall[1]`  |  `r cM_rf_cross$overall[1]`  
+Random Forest - Ensemble  |  `rf`  |  `r confusionMatrix(pred_sum_train_rf,sum_pred_train_DF$classe)$overall[1]`  |  `r cM_comb_rf_cross$overall[1]`  
+Bagging - Ensemble  |  `treebag`  |  `r confusionMatrix(pred_sum_train_tb,sum_pred_train_DF$classe)$overall[1]`  |  `r cM_comb_tb_cross$overall[1]`  
+Boosting - Ensemble  |  `gbm`  |  `r confusionMatrix(pred_sum_train_gbm,sum_pred_train_DF$classe)$overall[1]`  |  `r cM_comb_gbm_cross$overall[1]`  
+
+Interestingly enough, it appears as if using *__only__* **random forest** gave the best prediction based on cross validation accuracy. Let's take a look at the confusion matrices of each random forest prediction (*only* and *ensemble*) in the hopes of gaining any insight as to how the inaccuracies are distributed:  
+
+- **Random Forest - ONLY**  
+
+```{r }
+cM_rf_cross$table
+```
+
+- **Random Forest - ENSEMBLE**  
+
+```{r }
+cM_comb_rf_cross$table
+```
+
+From the matrices, it appears as if *ensemble* model took a correctly labeled `A` and `C` observation and labeled them as `E`. However, it also looks like a mislabeled event was correctly labeled as `E`. This results in a total change of only one correctly labeled observation to become incorrectly labeled. One could go forward and determine if each observation has been predicted equally (except for the *three* exceptions) by each model but we will end our comparison here. Our only thought is that in the *ensemble* random forest model, extra *weight* was given to mislabeled observations during training from either the bagged or boosted models (or both). Whereas, in the *only* random forest model, there wasn't this extra *pull* during training. We suspect this is the cause in a slight decrease in accuracy in the ensemble random forest model.
+
+### In Summary
+
+Although both the *only* and *ensemble* random forest models gave excellent performances on the cross validation dataset, `r round(cM_rf_cross$overall[1]*100,2)`% and `r round(cM_comb_rf_cross$overall[1]*100,2)`%, respectively, we choose to proceed without the ensemble model, and use the model that used **only** the random forest algorithm to train on the training dataset.
+
+### Appendix: *Prediction of Test Dataset*
+
+In this appendix, we perform a prediction on our **test dataset**.  
+
+- Read in test dataset:  
+``` {r read_test}
+testData <- read.csv("pml-testing.csv",na.strings = c("","NA"),stringsAsFactors = FALSE)
+testData <- testData[,-c(1:7)]
+```
+
+- Tidy up dataset following procedures from above:  
+```{r tidy_test}
+testData <- testData[ ,
+      apply(testData[,-dim(testData)[2]],2,function(x) !any(is.na(as.numeric(x))))]
+#testData$classe <- as.factor(theData$classe)
+```
+
+- Make prediction of test dataset using *winning* model from above `fit_rf`:  
+```{r predict_test}
+pred_test <- predict(fit_rf,testData)
+pred_test
+```
+
+
+----------------------
+$^*$ The WLE dataset comes from the Groupware@LES: http://groupware.les.inf.puc-rio.br/har.
