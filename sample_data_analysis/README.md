@@ -32,6 +32,7 @@ Link [here](http://htmlpreview.github.io/?https://github.com/r-gavin/insight_fel
 Aim to answer the following two items:
 1. Is an automatic or manual transmission better for MPG?
 2. Quantify the MPG difference between automatic and manual transmissions.  
+
 Conduct *t-test* to answer those questions. Also perform a multivariate 
 regression analysis. Link [here](https://github.com/r-gavin/insight_fellowship/blob/master/sample_data_analysis/RegModels.pdf).
 * reproducible research
