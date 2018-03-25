@@ -9,7 +9,7 @@ etc. This project was designed to show a familiarity with *leaflet*, not a profi
 
 Files & Links:
 - leaflet_ex.Rmd
-- leaflet_ex.html, link [here]()
+- leaflet_ex.html, link [here](http://rpubs.com/r-gavin/373332)
 
 ### Plotly
 
