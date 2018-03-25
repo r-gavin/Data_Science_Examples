@@ -1,6 +1,6 @@
 ## Other Examples of Interactive Data Tools
 
-This directory contains ***3*** examples of interactive data tools built to showcase various packages.
+This directory contains **3** examples of interactive data tools built to showcase various packages.
 
 ### Leaflet
 
