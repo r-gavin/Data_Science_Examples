@@ -18,9 +18,9 @@ Jordan and Lebron James. This project was designed to show a working knowledge o
 
 Files & Links:
 - plotly_ex.pres.Rmd
-- plotly_ex.pres.html, link [here]() 
+- plotly_ex.pres.html, link [here](http://rpubs.com/r-gavin/373334) 
 - plotly_ex.Rmd
-- plotly_ex.html, link [here]()
+- plotly_ex.html, link [here](http://rpubs.com/r-gavin/373336)
 
 ### Shiny Apps
 
