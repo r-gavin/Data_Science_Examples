@@ -1,0 +1,60 @@
+---
+title: "Leaflet Example"
+author: "Ryan Gavin"
+date: "6/9/2017"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE,
+                      message = FALSE,
+                      warning = FALSE)
+```
+
+## **Map** of United States National Parks, National Monuments, National Preserves, National Historical Parks, National Historic Sites, and more.
+
+The (Leaflet) map below shows the location of United States national parks, monuments, preserves, historical parks, historic sites, and more. This list is not verified to be complete. Data was taken from an [AggData](https://www.aggdata.com/free-data/us-national-parks) dataset, which was collected from the National Park Service ([nps.gov](https://www.nps.gov/index.htm)).
+
+#### Load Libraries
+```{r libraries}
+require(leaflet)
+```
+
+#### Acquire and Process Data
+
+Import data from website:
+```{r data1}
+parkData <- read.csv("https://www.aggdata.com/download_sample.php?file=national_park_service.csv",
+                     stringsAsFactors = FALSE,na.strings = c("","na","NA"))
+colnames(parkData)
+```
+
+We only need 3 of these columns: Location Name, Latitude, and Longitude. We'll trim our data frame to  include just those and rename them so the data frame can be used easily with `leaflet()`. We also check to see if any locations are missing latitudes or longitude.
+
+```{r data2}
+parkData <- parkData[,c("Location.Name","Latitude","Longitude")]
+colnames(parkData) <- c("popup","lat","lng")
+head(parkData,5)
+apply(parkData[,2:3],2,function(x) any(is.na(x)) )
+```
+
+Okay, looks like we've got some missing coordinates. For simplicity, let's just get rid of them. This Leaflet map is, after all, just an example of competence. 
+
+```{r data3}
+parkData <- parkData[ !is.na(parkData$lat) & !is.na(parkData$lng), ]
+apply(parkData[,2:3],2,function(x) any(is.na(x)) )
+```
+
+Everything looks good! 
+
+#### Build Leaflet Map
+
+Now let's build our map!!! The markers will have a pop up with the name of the parks, monument, etc.
+
+```{r build_map}
+parkData %>% leaflet() %>% addTiles() %>%
+    addProviderTiles(providers$OpenStreetMap) %>%
+    addMarkers(popup = parkData$popup,
+               clusterOptions = markerClusterOptions())
+```
+

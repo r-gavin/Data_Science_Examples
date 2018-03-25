@@ -1,0 +1,350 @@
+---
+title: "Michael Jordan & LeBron James:    A comparison using the Plot_ly Package"
+author: "Ryan Gavin"
+date: "6/20/2017"
+output: ioslides_presentation
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE,
+                      message = FALSE,
+                      warning = FALSE)
+```
+
+## Executive Summary
+
+As an example of practice with the `plot_ly` package, we'll take a look at some of the stats for **Michael Jordan** and **LeBron James** over their careers.
+
+## Data Processing
+
+We'll begin by loading the necessary libraries. Then we read in the data$^*$ from `.csv` files and tidy it up.
+
+```{r libraries, echo=FALSE}
+require(ggplot2)
+require(plotly)
+require(dplyr)
+```
+
+```{r data}
+mj_pg <- tbl_df(read.csv("MJ_PerGame.csv",stringsAsFactors = FALSE))
+lj_pg <- tbl_df(read.csv("LJ_PerGame.csv",stringsAsFactors = FALSE))
+
+mj_pg$Season[1:dim(mj_pg)[1]] <- c(1:dim(mj_pg)[1])
+lj_pg$Season[1:dim(lj_pg)[1]] <- c(1:dim(lj_pg)[1])
+
+mj_pg <- mutate(mj_pg,"Lg" = NULL, "Pos" = NULL)
+lj_pg <- mutate(lj_pg,"Lg" = NULL, "Pos" = NULL)
+```
+
+$^*$ Data was taken from the website [Sports Reference](http://www.sports-reference.com).
+
+## Data Processing
+
+cont'd
+
+```{r data2}
+mj_pg$Season <- as.numeric(mj_pg$Season)
+lj_pg$Season <- as.numeric(lj_pg$Season)
+
+mj_pg <- mutate(mj_pg, "Player" = "Jordan")
+lj_pg <- mutate(lj_pg, "Player" = "James")
+
+pg <- rbind(mj_pg,lj_pg)
+```
+
+## Data Analysis
+
+The following plot shows various statistics for the players Michael Jordan and LeBron James over their respective careers. Statistics (per season) included are  
+- Games Played  
+- Minutes Played per Game  
+- Average Points per Game  
+- Average Offensive Rebounds per Game  
+- Average Defensive Rebounds per Game  
+- Average Total Rebounds per Game  
+
+## Data Analysis
+cont'd  
+- Average 2-Point Field Goals per Game (Made, Attempted, Percentage)  
+- Average 3-Point Field Goals per Game (Made, Attempted, Percentage)  
+- Average Total Field Goals per Game (Made, Attempted, Percentage)  
+
+Use the buttons on the plot to navigate through the various statistics.
+
+## Plot_ly Plot
+```{r analysis, echo=FALSE}
+updatemenus <- list(
+      list(
+            type="buttons",
+            buttons = list(
+
+                  # #1                  
+                  list(
+                        label = "Games Played",
+                        method = "update",
+                        args = list(list(visible=c(rep(TRUE,4),
+                                                   rep(FALSE,4),
+                                                   rep(FALSE,4),
+                                                   rep(FALSE,4),
+                                                   rep(FALSE,4),
+                                                   rep(FALSE,4),
+                                                   rep(FALSE,2),
+                                                   rep(FALSE,2),
+                                                   rep(FALSE,2),
+                                                   rep(FALSE,2),
+                                                   rep(FALSE,2),
+                                                   rep(FALSE,2),
+                                                   rep(FALSE,2),
+                                                   rep(FALSE,2),
+                                                   rep(FALSE,2))),
+                                    list(title = "M. Jordan vs L. James: Games Played In",
+                                         yaxis=list(title="Games Played")))
+                        ),
+
+                  # #2
+                  list(
+                        label = "Minutes Played",
+                        method = "update",
+                        args = list(list(visible=c(rep(FALSE,4),
+                                                   rep(TRUE,4),
+                                                   rep(FALSE,4),
+                                                   rep(FALSE,4),
+                                                   rep(FALSE,4),
+                                                   rep(FALSE,4),
+                                                   rep(FALSE,2),
+                                                   rep(FALSE,2),
+                                                   rep(FALSE,2),
+                                                   rep(FALSE,2),
+                                                   rep(FALSE,2),
+                                                   rep(FALSE,2),
+                                                   rep(FALSE,2),
+                                                   rep(FALSE,2),
+                                                   rep(FALSE,2))),
+                                    list(title = "M. Jordan vs L. James: Avg Minutes Played Per Game",
+                                         yaxis=list(title="Minutes Played/Game")))
+                        ),
+
+                  # #3
+                  list(
+                        label = "Points",
+                        method = "update",
+                        args = list(list(visible=c(rep(FALSE,4),
+                                                   rep(FALSE,4),
+                                                   rep(TRUE,4),
+                                                   rep(FALSE,4),
+                                                   rep(FALSE,4),
+                                                   rep(FALSE,4),
+                                                   rep(FALSE,2),
+                                                   rep(FALSE,2),
+                                                   rep(FALSE,2),
+                                                   rep(FALSE,2),
+                                                   rep(FALSE,2),
+                                                   rep(FALSE,2),
+                                                   rep(FALSE,2),
+                                                   rep(FALSE,2),
+                                                   rep(FALSE,2))),
+                                    list(title = "M. Jordan vs L. James: Avg Points per Game",
+                                         yaxis=list(title="Points/Game")))
+                        ),
+
+                  # #4
+                  list(
+                        label = "Off Rebounds",
+                        method = "update",
+                        args = list(list(visible=c(rep(FALSE,4),
+                                                   rep(FALSE,4),
+                                                   rep(FALSE,4),
+                                                   rep(TRUE,4),
+                                                   rep(FALSE,4),
+                                                   rep(FALSE,4),
+                                                   rep(FALSE,2),
+                                                   rep(FALSE,2),
+                                                   rep(FALSE,2),
+                                                   rep(FALSE,2),
+                                                   rep(FALSE,2),
+                                                   rep(FALSE,2),
+                                                   rep(FALSE,2),
+                                                   rep(FALSE,2),
+                                                   rep(FALSE,2))),
+                                    list(title="M. Jordan vs L. James: Offensive Rebounds per Game",
+                                         yaxis=list(title="Off Rebounds/Game")))
+                        ),
+                  # #5
+                  list(
+                        label = "Def Rebounds",
+                        method = "update",
+                        args = list(list(visible=c(rep(FALSE,4),
+                                                   rep(FALSE,4),
+                                                   rep(FALSE,4),
+                                                   rep(FALSE,4),
+                                                   rep(TRUE,4),
+                                                   rep(FALSE,4),
+                                                   rep(FALSE,2),
+                                                   rep(FALSE,2),
+                                                   rep(FALSE,2),
+                                                   rep(FALSE,2),
+                                                   rep(FALSE,2),
+                                                   rep(FALSE,2),
+                                                   rep(FALSE,2),
+                                                   rep(FALSE,2),
+                                                   rep(FALSE,2))),
+                                    list(title="M. Jordan vs L. James: Defensive Rebounds per Game",
+                                         yaxis=list(title="Def Rebounds/Game")))
+                        ),
+                  # #6
+                  list(
+                        label = "Total Rebounds",
+                        method = "update",
+                        args = list(list(visible=c(rep(FALSE,4),
+                                                   rep(FALSE,4),
+                                                   rep(FALSE,4),
+                                                   rep(FALSE,4),
+                                                   rep(FALSE,4),
+                                                   rep(TRUE,4),
+                                                   rep(FALSE,2),
+                                                   rep(FALSE,2),
+                                                   rep(FALSE,2),
+                                                   rep(FALSE,2),
+                                                   rep(FALSE,2),
+                                                   rep(FALSE,2),
+                                                   rep(FALSE,2),
+                                                   rep(FALSE,2),
+                                                   rep(FALSE,2))),
+                                    list(title="M. Jordan vs L. James: Total Rebounds per Game",
+                                         yaxis=list(title="Total Rebounds/Game")))
+                        ),
+                  
+                  # #7, 8, 9
+                  list(
+                        label = "2-PT Field Goals",
+                        method = "update",
+                        args = list(list(visible=c(rep(FALSE,4),
+                                                   rep(FALSE,4),
+                                                   rep(FALSE,4),
+                                                   rep(FALSE,4),
+                                                   rep(FALSE,4),
+                                                   rep(FALSE,4),
+                                                   rep(TRUE,2),
+                                                   rep(TRUE,2),
+                                                   rep(TRUE,2),
+                                                   rep(FALSE,2),
+                                                   rep(FALSE,2),
+                                                   rep(FALSE,2),
+                                                   rep(FALSE,2),
+                                                   rep(FALSE,2),
+                                                   rep(FALSE,2))),
+                                    list(title="M. Jordan vs L. James: 2-PT Field Goals per Game",
+                                         yaxis=list(side="left",title="2-PT FG Made and Attempted/Game"),
+                                         yaxis2=list(side="right",overlaying="y",range=c(10,70),
+                                                     title="2-PT FG Percentage/Game")))
+                        ),
+                  
+                  # #10, 11, 12
+                  list(
+                        label = "3-PT Field Goals",
+                        method = "update",
+                        args = list(list(visible=c(rep(FALSE,4),
+                                                   rep(FALSE,4),
+                                                   rep(FALSE,4),
+                                                   rep(FALSE,4),
+                                                   rep(FALSE,4),
+                                                   rep(FALSE,4),
+                                                   rep(FALSE,2),
+                                                   rep(FALSE,2),
+                                                   rep(FALSE,2),
+                                                   rep(TRUE,2),
+                                                   rep(TRUE,2),
+                                                   rep(TRUE,2),
+                                                   rep(FALSE,2),
+                                                   rep(FALSE,2),
+                                                   rep(FALSE,2))),
+                                    list(title="M. Jordan vs L. James: 3-PT Field Goals per Game",
+                                         yaxis=list(side="left",title="3-PT FG Made and Attempted/Game"),
+                                         yaxis2=list(side="right",overlaying="y",range=c(10,70),
+                                                     title="3-PT FG Percentage/Game")))
+                        ),
+                  
+                  # #13, 14, 15
+                  list(
+                        label = "Total Field Goals",
+                        method = "update",
+                        args = list(list(visible=c(rep(FALSE,4),
+                                                   rep(FALSE,4),
+                                                   rep(FALSE,4),
+                                                   rep(FALSE,4),
+                                                   rep(FALSE,4),
+                                                   rep(FALSE,4),
+                                                   rep(FALSE,2),
+                                                   rep(FALSE,2),
+                                                   rep(FALSE,2),
+                                                   rep(FALSE,2),
+                                                   rep(FALSE,2),
+                                                   rep(FALSE,2),
+                                                   rep(TRUE,2),
+                                                   rep(TRUE,2),
+                                                   rep(TRUE,2))),
+                                    list(title="M. Jordan vs L. James: Total Field Goals per Game",
+                                         yaxis=list(side="left",title="Total FG Made and Attempted/Game"),
+                                         yaxis2=list(side="right",overlaying="y",range=c(10,70),
+                                                     title="Total FG Percentage/Game")))
+                        )
+                  )
+            )
+      )
+
+
+p <- plot_ly(data = pg) %>%
+      #1
+      add_lines(x=~Season,y=~G,
+                type="scatter",mode="lines+markers",
+                marker=list(size=10,opacity=0.45),linetype=~Player,color=~Tm) %>%
+      #2
+      add_lines(x=~Season,y=~MP,
+                type="scatter",mode="lines+markers",
+                marker=list(size=10,opacity=0.45),linetype=~Player,color=~Tm,visible=FALSE) %>%
+      #3
+      add_lines(x=~Season,y=~PTS,
+                type="scatter",mode="lines+markers",
+                marker=list(size=10,opacity=0.45),linetype=~Player,color=~Tm,visible=FALSE) %>%
+      #4
+      add_lines(x=~Season,y=~ORB,
+                type="scatter",mode="lines+markers",
+                marker=list(size=10,opacity=0.45),linetype=~Player,color=~Tm,visible=FALSE) %>%
+      #5
+      add_lines(x=~Season,y=~DRB,
+                type="scatter",mode="lines+markers",
+                marker=list(size=10,opacity=0.45),linetype=~Player,color=~Tm,visible=FALSE) %>%
+      #6
+      add_lines(x=~Season,y=~TRB,
+                type="scatter",mode="lines+markers",
+                marker=list(size=10,opacity=0.45),linetype=~Player,color=~Tm,visible=FALSE) %>%
+      #7, 8, 9
+      add_trace(x=~Season,y=~X2P,type="bar",name="Made 2-PT FG",
+                color=~Player,visible=FALSE) %>%
+      add_trace(x=~Season,y=~X2PA,type="bar",name="Attempted 2-PT FG",
+                color=~Player,visible=FALSE) %>%
+      add_lines(x=~Season,y=~X2P.*100,type="scatter",name="2-PT FG %",mode="lines",
+                color=I("black"),linetype=~Player,yaxis="y2",visible=FALSE) %>%
+      
+      #10, 11, 12
+      add_trace(x=~Season,y=~X3P,type="bar",name="Made 3-PT FG",
+                color=~Player,visible=FALSE) %>%
+      add_trace(x=~Season,y=~X3PA,type="bar",name="Attempted 3-PT FG",
+                color=~Player,visible=FALSE) %>%
+      add_lines(x=~Season,y=~X3P.*100,type="scatter",name="3-PT FG %",mode="lines",
+                color=I("black"),linetype=~Player,yaxis="y2",visible=FALSE) %>%
+      
+      #13, 14, 15
+      add_trace(x=~Season,y=~FG,type="bar",name="Made Total FG",
+                color=~Player,visible=FALSE) %>%
+      add_trace(x=~Season,y=~FGA,type="bar",name="Attempted Total FG",
+                color=~Player,visible=FALSE) %>%
+      add_lines(x=~Season,y=~FG.*100,type="scatter",name="Total FG %",mode="lines",
+                color=I("black"),linetype=~Player,yaxis="y2",visible=FALSE) %>%
+      
+      layout(title="Michael Jordan vs LeBron James", 
+             yaxis=list(title="Games Played"),
+             updatemenus = updatemenus)
+
+p
+```
+
