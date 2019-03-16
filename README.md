@@ -1,4 +1,4 @@
-## insight_fellowship
+## Data_Science_Examples
 
 This repository has been created to highlight a few side projects (for learning only) 
 I have worked on to help develop some data science skills. A description of the 
